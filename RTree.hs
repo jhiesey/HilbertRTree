@@ -11,33 +11,25 @@ intersects :: Rect -> Rect -> Bool
 intersects a b = xmin a < xmax b && xmax a > xmin b &&
                  ymin a < ymax b && ymax a > ymin b
                  
--- This class is used for               
-class Hilbert a where
-  largestH :: a -> Int
-  boundingRect :: a -> Rect
-                 
-data Leaf = Leaf {leafH :: Int, leafRect :: Rect} deriving (Show)
+-- data Leaf = Leaf {leafH :: Int, leafRect :: Rect} deriving (Show)
 
-instance Hilbert Leaf where
-  largestH = leafH
-  boundingRect = leafRect
-
-data RTree = InnerNode Int Rect [RTree]
-           | LeafNode Int Rect [Leaf]
+data RTree = Node Int Rect [RTree]
+           | Leaf Int Rect
            deriving (Show)
-           
-instance Hilbert RTree where
-  largestH (InnerNode h _ _) = h
-  largestH (LeafNode h _ _) = h
-  boundingRect (InnerNode _ r _) = r
-  boundingRect (LeafNode _ r _) = r
-  
+
+treeLHV :: RTree -> Int
+treeLHV (Node h _ _ _) = h
+treeLHV (Leaf h _ _) = h
+
+treeBound :: RTree -> Rect
+treeBound (Node _ r _) = r
+treeBound (Leaf _ r) = r
   
 boundIntersect :: Rect -> Rect -> Rect
            
-computeLHV :: [RTree] -> Int
-
-computeBound :: [RTree] -> Rect
+-- computeLHV :: [RTree] -> Int
+-- 
+-- computeBound :: [RTree] -> Rect
 
 capacity :: Int
 capacity = 10
@@ -58,7 +50,7 @@ group as = group' as [] n
       (gr, restAs) = splitAt n as
       
 -- Generates n (or n+1, in case of overflow) leaf nodes from a list of elements
-generateLeaves :: Hilbert a, Hilbert b => [a] -> Int -> [b]
+generateLeaves :: [RTree] -> Int -> [RTree]
 generateLeaves contents n =
   let
     sortedContents = sortBy (\a b -> compare (largestH a) (largestH b)) contents
@@ -70,14 +62,14 @@ generateLeaves contents n =
 
     newSiblingElems = group sortedContents elemsPerSibling
     
-    generateLeaf :: Hilbert a, Hilbert b => [a] -> b
+    generateLeaf :: [RTreee] -> RTree
     generateLeaf ls =
       let
         -- Assumes sorted elements
-        newLhv = leafH $ last ls
-        newBound = foldr (boundIntersect . leafRect) ls
+        newLhv = treeLHV $ last ls
+        newBound = foldr (boundIntersect . treeBound) ls
       in
-        LeafNode newLhv newBound ls
+        Node newLhv newBound ls
   in
     map generateLeaf newSiblingElems
     
@@ -93,7 +85,7 @@ splitNode (left, focus, right) =
     -- Actual number of siblings found (may be less than siblings if the parent is not full)
     numSiblings = (length siblingList) + 1
     -- Get all of the contents of the siblings, plus the new node
-    newContents = l:((foldr (\(LeafNode _ _ elems) list -> list ++ elems) [] siblingList))
+    newContents = l:((foldr (\(Node _ _ elems) list -> list ++ elems) [] siblingList))
   
   in
     (leftRest, generateLeaves newContents numSiblings, rightRest)
@@ -110,45 +102,100 @@ insertTree t r =
       head mid
     else
       -- If the root split, make a new root
-      InnerNode (computeLHV mid) (computeBound mid) mid
+      Node (computeLHV mid) (computeBound mid) mid
   where
     -- Accepts a zipper of nodes, and returns 3 lists: unmodified before and after, and modified
     insertT :: ([RTree], RTree, [RTree]) -> Leaf -> ([RTree], [RTree], [RTree])
-    insertT (left, focus, right) l =
-      case focus of
-        InnerNode lhv bound children@[RTree oldh oldr _] ->
+    insertT (left, focus@(Node lhv bound elems), right) l =
+      -- Find the correct insertion point
+      let
+        (start, rest) = span (\(ll _ _) -> ll <= (treeLHV l)) elems
+        -- Compute the new contents of this node: the unchanged previous nodes (in reverse), the new/modified nodes, and the rest
+        (resStart, resModified, resRest) = case elems of
+          [Node] -> insertT (reverse start, head rest, tail rest) l
+          [Leaf] -> (reverse start, l, rest)
+          
+        totalElems = length resStart + length resModified + resRest
+      in  
+        if totalElems <= capacity then
+          -- Just reconstitute the node, since everything fits
           let
-            (start, rest) = span (\(ll _ _) -> ll <= (leafH l)) children
-            (resStart, resMid, resRest) = insertT (reverse start, head rest, tail rest) l
-          in
-            if length resStart + length resMid + length resRest <= capacity then
-              let
-                allChildren = reverse resStart ++ resMid ++ resRest
-                newInnerNode = InnerNode (foldr max oldh resMid) (foldr boundIntersect oldr resMid) allChildren
-              in
-                (left, [newInnerNode], right)
-            else
-              -- Need to split
-              splitNode (left, focus, right)
+            newLhv = foldr (max . treeLHV) lhv resModified
+            newBound = foldr (boundIntersect . treeBound) bound resModified
             
-          -- Find correct child, recurse, update h, r
-          -- if length children < capacity then
-          --   let
-          --     (start, rest) = span (\(ll _ _) -> ll <= (leafH l)) children
-          --     newInnerNode = InnerNode (max lhv ((\(ll _ _) -> ll) l)) (boundIntersect bound ((\(_ bb _) -> bb) l)) (before ++ (l))
+            modifiedNode = Node newLhv newBound ((reverse resStart) ++ resModified ++ resRest)
+          in
+            (left, [modifiedNode], right)
+        else
+          -- Otherwise, rearrange the elements in the siblings
+          let
+            numRightSiblings = min (length right) siblings
+            -- Separate the siblings from the rest of the parent's nodes list
+            (leftSiblings, leftRest) = splitAt (siblings - numRightSiblings) left
+            (rightSiblings, rightRest) = splitAt numRightSiblings right
+            
+            -- Actual number of siblings found (may be less than siblings if the parent is not full)
+            numSiblings = (length siblingList) + 1 -- One extra for the focus     
+          in
+            
+          
+
+        -- splitNode :: ([RTree], RTree, [RTree]) -> Int -> ([RTree], [RTree], [RTree])
+        -- splitNode (left, focus, right) =
+        --   let
+            numRightSiblings = min (length right) siblings
+            -- Separate the siblings from the rest of the parent's nodes list
+            (leftSiblings, leftRest) = splitAt (siblings - numRightSiblings) left
+            (rightSiblings, rightRest) = splitAt numRightSiblings right
         
-        LeafNode lhv bound elements@[Leaf _ _ _] ->
-          -- Find location, insert, upddate h, r
-          if length elements < capacity then
-            -- Don't need to split
-            let
-              (before, rest) = span (\ll -> (leafH ll) <= (leafH l)) elements
-              newLeafNode = LeafNode (max lhv (leafH l)) (boundIntersect bound (leafRect l)) (before ++ (l:rest))
-            in
-              (left, [newLeafNode], right)
-          else
-            -- Need to split
-            splitNode (left, focus, right)
+        --     siblingList = leftSiblings ++ (focus:rightSiblings)
+        --     -- Actual number of siblings found (may be less than siblings if the parent is not full)
+        --     numSiblings = (length siblingList) + 1
+        --     -- Get all of the contents of the siblings, plus the new node
+        --     newContents = l:((foldr (\(Node _ _ elems) list -> list ++ elems) [] siblingList))
+        -- 
+        --   in
+        --     (leftRest, generateLeaves newContents numSiblings, rightRest)         
+        --   
+      -- in
+      --   case elems of
+      --     [Node] ->
+      --       let
+      --         -- Recurse
+      --         (resStart, resMid, resRest) = insertT (reverse start, head rest, tail rest) l
+      --       in
+      --         if length resStart + length resMid + length resRest <= capacity then
+      --           let
+      --             allChildren = reverse resStart ++ resMid ++ resRest
+      --             newInnerNode = Node (foldr max oldh resMid) (foldr boundIntersect oldr resMid) allChildren
+      --           in
+      --             (left, [newInnerNode], right)
+      --         else
+      --           -- Need to split
+      --           splitNode (left, focus, right)
+      --       
+      --       -- Find correct child, recurse, update h, r
+      --       -- if length children < capacity then
+      --       --   let
+      --       --     (start, rest) = span (\(ll _ _) -> ll <= (leafH l)) children
+      --       --     newInnerNode = InnerNode (max lhv ((\(ll _ _) -> ll) l)) (boundIntersect bound ((\(_ bb _) -> bb) l)) (before ++ (l))
+      --   
+      --     [Leaf] ->
+      --       let
+      --         (resStart, resMid, resRest) = (reverse start, l, rest)
+      --     
+      --     
+      --       -- Find location, insert, upddate h, r
+      --       if length elements < capacity then
+      --         -- Don't need to split
+      --         let
+      --           (before, rest) = span (\ll -> (leafH ll) <= (leafH l)) elements
+      --           newLeafNode = Node (max lhv (leafH l)) (boundIntersect bound (leafRect l)) (before ++ (l:rest))
+      --         in
+      --           (left, [newLeafNode], right)
+      --       else
+      --         -- Need to split
+      --         splitNode (left, focus, right)
 
 -- data RTree el = Node [(Rect, RTree el, Int)]
 --               | Leaf [(Rect, el, Int)]
