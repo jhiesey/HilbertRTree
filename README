@@ -1,4 +1,4 @@
-John Hiesey
+Name: John Hiesey
 
 Just build with
 ghc --make RTree.hs
