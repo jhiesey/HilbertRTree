@@ -1,21 +1,13 @@
+module RTree where
+
 import System.IO.Unsafe
 
 import System.IO
 import CPUTime
 import System
 import Data.List
-import Test.QuickCheck
 
 data Rect = Rect { xmin :: Int, xmax :: Int, ymin :: Int, ymax:: Int } deriving (Show, Eq, Ord)
-
-instance Arbitrary Rect where
-  arbitrary = do
-    xmin <- choose (0, 65535)
-    xmax <- choose (xmin, 65535)
-    ymin <- choose (0, 65535)
-    ymax <- choose (ymin, 65535)
-    return (Rect xmin xmax ymin ymax)
-    
 
 hilbertValue :: Int -> Int -> Int -> Int
 hilbertValue x y n = hilbertValue' x y n 0
@@ -168,35 +160,7 @@ searchTree (Node _ _ contents) query =
   concat [searchTree child query | child <- contents, intersects query (treeBound child)]
 searchTree (Leaf _ r) query = [r]
 
-data Simple = Simple [Rect] deriving (Show)
-           
-
-insertSimple :: Simple -> Rect -> Simple
-insertSimple (Simple t) r = Simple (r:t)
-
-searchSimple :: Simple -> Rect -> [Rect]
-searchSimple (Simple t) q = filter (intersects q) t
-
-t_tree :: [Rect] -> Rect -> Bool
-t_tree elems query =
-  sort (searchTree (foldl insertTree Empty elems) query) == sort (searchSimple (foldl insertSimple (Simple []) elems) query)
-
-
-tryTree :: RTree
-tryTree =
-  let
-    emptyTree = Empty
-  in
-    insertTree (insertTree emptyTree (Rect 1 2 1 2)) (Rect 2 3 2 3)
-    
--- tryHilbert :: Int -> String
--- tryHilbert o =
---   let  
---     hilbertRow :: Int -> Int -> String
---     hilbertRow order row = foldl (\curr x -> curr ++ "\t" ++ (show (x, row)) ++ (show (hilbertValue x row order))) [] [0..order - 1]
---   in
---     foldr (\y curr -> curr ++ "\n" ++ (hilbertRow o y)) [] [0..o - 1]
-  
+-- Splits alternate (even, odd) elements into separate lists, one for x values, one for y values
 splitCoords :: [Int] -> ([Int], [Int])
 splitCoords cs = splitCoords' cs 0 ([],[])
   where    
@@ -221,7 +185,7 @@ splitString delim xs =
       (c:cs) -> (start:(splitString delim cs))
       [] -> [start]
   
-  
+-- Parses a rect
 toRect :: String -> Rect
 toRect s =
   let
@@ -233,6 +197,15 @@ toRect s =
   in
     Rect (foldr1 min xs) (foldr1 max xs) (foldr1 min ys) (foldr1 max ys)
     
+data Simple = Simple [Rect] deriving (Show)
+
+insertSimple :: Simple -> Rect -> Simple
+insertSimple (Simple t) r = Simple (r:t)
+
+searchSimple :: Simple -> Rect -> [Rect]
+searchSimple (Simple t) q = filter (intersects q) t
+
+-- Generates a tree given the contents of a file
 generateTree :: String -> RTree
 generateTree contents = 
   let
@@ -240,10 +213,8 @@ generateTree contents =
     filteredLs = filter (/= "") ls
   in
     foldr (\s t -> insertTree t (toRect s)) Empty filteredLs
-    
--- queryTree :: String -> RTree -> [Rect]
--- queryTree _ _ = []
 
+-- Formats a list of rectangles as a string, taking at most the first four rects
 formatResult :: [Rect] -> String
 formatResult rs = unlines $ take 4 $ map formatRect rs
   where
@@ -251,7 +222,8 @@ formatResult rs = unlines $ take 4 $ map formatRect rs
                  (show $ xmin r), (show $ ymin r), 
                  (show $ xmax r), (show $ ymin r),
                  (show $ xmax r), (show $ ymax r)]
-    
+ 
+-- Query loop   
 readLoop :: RTree -> IO ()
 readLoop tree = do
   isEof <- isEOF

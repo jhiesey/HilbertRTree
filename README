@@ -2,3 +2,6 @@ John Hiesey
 
 Just build with
 ghc --make RTree.hs
+
+For the tests,
+ghc --make RTreeTest.hs
