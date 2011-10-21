@@ -75,7 +75,7 @@ boundIntersect a b = Rect (min (xmin a) (xmin b)) (max (xmax a) (xmax b)) (min (
 groupNodes :: [a] -> Int -> [[a]]
 groupNodes as n = groupNodes' as [] n
   where
-    groupNodes' [] acc n = acc
+    groupNodes' [] acc n = reverse acc
     groupNodes' as acc n = groupNodes' restAs (gr:acc) n
       where
         (gr, restAs) = splitAt n as
@@ -105,7 +105,7 @@ insertTree t r =
       let
         (start, rest) = span (\ll -> treeLHV ll <= treeLHV l) elems
         reverseStart = reverse start
-        zipper = if null rest then (tail reverseStart, head reverseStart, rest) else (reverse start, head rest, tail rest)
+        zipper = if null rest then (tail reverseStart, head reverseStart, rest) else (reverseStart, head rest, tail rest)
         -- Compute the new contents of this node: the unchanged previous nodes (in reverse), the new/modified nodes, and the rest
         (resStart, resModified, resRest) = case elems of
           Node _ _ _ : _ -> insertT zipper l
@@ -200,15 +200,6 @@ toRect s =
     (xs, ys) = splitCoords coords
   in
     Rect (minimum xs) (maximum xs) (minimum ys) (maximum ys)
-
--- A simple version, for comparison    
--- data Simple = Simple [Rect] deriving (Show)
--- 
--- insertSimple :: Simple -> Rect -> Simple
--- insertSimple (Simple t) r = Simple (r:t)
--- 
--- searchSimple :: Simple -> Rect -> [Rect]
--- searchSimple (Simple t) q = filter (intersects q) t
 
 -- Generates a tree given the contents of a file
 generateTree :: String -> RTree

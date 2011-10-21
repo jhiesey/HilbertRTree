@@ -3,5 +3,21 @@ John Hiesey
 Just build with
 ghc --make RTree.hs
 
+Then run ./RTree <filename>
+
 For the tests,
 ghc --make RTreeTest.hs
+
+Then run ./RTreeTest
+
+This runs a few QuickCheck tests, plus one manual (visual inspection) test for the hilbert value function.
+The actual tests are near the bottom and are prefixed with t_
+
+******************************
+
+This implementation takes the bounding rect of any set of points (for both the input file and the queries)
+This means that a query can be made by simply providing
+
+xmin,ymin,xmax,ymax
+
+(i.e. 2 points), if you want.  Rectangles, of course, work as well.  Either EOF or a blank line will exit.
