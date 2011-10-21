@@ -1,1 +1,4 @@
-Testing
+John Hiesey
+
+Just build with
+ghc --make RTree.hs
